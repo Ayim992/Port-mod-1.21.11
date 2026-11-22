@@ -65,11 +65,13 @@ def smooth_lobes(bones, variant):
         bs = {n for n in subtree(bones, "boobs") if keep(n)}
         nip = {n for n in subtree(bones, "boobs") if "nipple" in n.lower()}
         for side, s in (("L", 1), ("R", -1)):
-            out.append(dict(name=f"breast.{side}", bones=bs, split_x=s, center_shift=(0, 1.3 * px, 0),
+            # the nipple/areola cubes are part of the breast surface (leaving them out leaves a dent)
+            out.append(dict(name=f"breast.{side}", bones=bs | nip, split_x=s, center_shift=(0, 1.3 * px, 0),
                             subdiv=6, smooth=40, cone=2.0))
             if nip:
-                out.append(dict(name=f"nipple.{side}", bones=nip, split_x=s, center_shift=(0, 0.25 * px, 0),
-                                subdiv=5, smooth=10, cone=4.0, weight_smooth=2))
+                # plus a firmer nipple on top so it keeps poking out after smoothing
+                out.append(dict(name=f"nipple.{side}", bones=nip, split_x=s, center_shift=(0, 0.9 * px, 0),
+                                subdiv=6, smooth=6, cone=3.0, weight_smooth=2))
     if "booty" in bones:
         bs = {n for n in subtree(bones, "booty") if keep(n)}
         for side, s in (("L", 1), ("R", -1)):

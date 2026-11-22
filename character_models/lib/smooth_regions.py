@@ -163,13 +163,19 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             continue
         V, F, E, known = res
         region_mask |= mask
-        # colour + bones from the nearest original surface sample (outermost samples first)
+        # colour from outward-facing samples only (side faces of plates carry darker edge texels),
+        # averaged over the nearest few; bones from the nearest sample of any kind
+        radial = (P - center) / np.maximum(np.linalg.norm(P - center, axis=1, keepdims=True), 1e-9)
+        outward = np.einsum("ij,ij->i", N, radial) > 0.35
+        if outward.sum() < 50:
+            outward[:] = True
+        Po, Co = P[outward], C[outward]
+        ctree = cKDTree(Po)
+        dist, cidx = ctree.query(V, k=4)
+        w = 1.0 / np.maximum(dist, 1e-5)
+        col_v = (Co[cidx] * w[..., None]).sum(axis=1) / w.sum(axis=1, keepdims=True)
         tree = cKDTree(P)
-        _, idx = tree.query(V, k=6)
-        # prefer the sample farthest from the center (outer shell) among the k nearest
-        far = np.linalg.norm(P[idx] - center, axis=2)
-        pick = idx[np.arange(len(V)), np.argmax(far, axis=1)]
-        col_v = C[pick]
+        _, pick = tree.query(V, k=1)
         bone_v = B[pick]
         names = sorted({gnames[b] for b in np.unique(bone_v)})
         Wl = np.zeros((len(V), len(names)))

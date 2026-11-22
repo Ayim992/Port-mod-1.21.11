@@ -1,5 +1,27 @@
 # Character models: Jenny, Marie, Bia
 
+## Exact models (from the sexmod GeckoLib files): `out/Jenny_*.blend`, `out/Bia_*.blend`
+`import_geckolib.py` converts `sources/<name>/` (geo.json + animation.json + texture) 1:1:
+- **Geometry:** every cube keeps its exact origin, size, inflate, pivot, rotation and per-face UV on the original 4096² texture.
+  Scale is 1 px = 1/16 m, as in Minecraft.
+- **Rig:** each GeckoLib bone becomes an armature bone at its exact pivot and rest orientation. Cubes are 100% bound to their bone,
+  exactly how the mod deforms them (including `boobs`, `booty`/`cheek*`, `curves*`, `side*`, `vagina`, the face expression bones and so on).
+- **Animations:** every mod animation is baked to an action, one key per frame at 24 fps. Jenny has 39 (doggy*, blowjob*, paizuri*, missionary, strip,
+  idle, walk…). Bia has 41 (anal*, prone_doggy*, talk_*, headpat, sitdown…). Easing curves and constant molang are evaluated like GeckoLib does.
+  Pick one in the Action editor on `<Name>_<Variant>_rig`. A loop's frame range is stored on the action, and `act["loop"]` records the loop mode.
+- **Partner:** the `steve` bone tree is the partner used by the scene animations. Turn on the rig's `steve` property to show it.
+  It uses a standard 64×64 player-skin layout (`out/textures/partner_skin.png`, a generated Steve-style skin), so swap in any skin you like.
+- `ArmorSlots`: the mod's armor/item overlay cubes. They're hidden because the game only draws them when armor is worn.
+- Rendering notes: the material does back-face culling and a 0.5 alpha cutout like Minecraft, and transparent bounces are raised to 128.
+  Paper-thin decal planes that face into the body are dropped, and plane faces are pulled 0.01 px apart; otherwise Cycles shows black patches.
+
+```
+python3 import_geckolib.py jenny bia            # both variants each; --variants nude|dressed, --no-anim, --render
+python3 animtest.py Jenny_Nude jenny.doggyslow 3  # render frames of an action
+```
+
+## Procedural models (earlier approximation)
+
 Procedural, rigged Blender 5.3 models built from the reference sheets.
 Each `out/<Name>.blend` is self-contained: textures are packed and the metarig is kept for regeneration.
 

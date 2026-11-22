@@ -11,6 +11,11 @@
   Pick one in the Action editor on `<Name>_<Variant>_rig`. A loop's frame range is stored on the action, and `act["loop"]` records the loop mode.
 - **Partner:** the `steve` bone tree is the partner used by the scene animations. Turn on the rig's `steve` property to show it.
   It uses a standard 64×64 player-skin layout (`out/textures/partner_skin.png`, a generated Steve-style skin), so swap in any skin you like.
+- **Smooth round parts** (`<Title>_Smooth`): breasts, nipples, butt cheeks and, on the nude variants, the vulva are rebuilt as smooth
+  surfaces (`lib/smooth_regions.py`). Each one samples the visible texels of the original cube shell, keeps the outermost surface in
+  every direction (same silhouette and volume), smooths out the steps, and colours and weights itself from the nearest original cube.
+  The original cubes live in `<Title>_BlockyParts`; the rig's `smooth` property switches between them (1 = smooth).
+  Use `--blocky` to skip this.
 - `ArmorSlots`: the mod's armor/item overlay cubes. They're hidden because the game only draws them when armor is worn.
 - Rendering notes: the material does back-face culling and a 0.5 alpha cutout like Minecraft, and transparent bounces are raised to 128.
   Paper-thin decal planes that face into the body are dropped, and plane faces are pulled 0.01 px apart; otherwise Cycles shows black patches.

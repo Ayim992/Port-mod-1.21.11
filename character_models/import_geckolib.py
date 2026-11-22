@@ -42,7 +42,7 @@ def add_prop(rig, name, default, desc):
     rig.id_properties_ui(name).update(min=0, max=1, soft_min=0, soft_max=1, description=desc)
 
 
-def drive_hide(ob, rig, prop):
+def drive_hide(ob, rig, prop, hide_when=0):
     for path in ("hide_viewport", "hide_render"):
         d = ob.driver_add(path).driver
         d.type = "SCRIPTED"
@@ -50,10 +50,41 @@ def drive_hide(ob, rig, prop):
         v.name = "v"
         v.targets[0].id = rig
         v.targets[0].data_path = f'["{prop}"]'
-        d.expression = "round(v) == 0"
+        d.expression = f"round(v) == {hide_when}"
 
 
-def convert(char, variant, anim=True, render=False, fps=24):
+def smooth_lobes(bones, variant):
+    """Which bone subtrees become smooth lobes. Armor overlays, nipples and the interior/anus
+    pieces stay as the original cubes."""
+    def keep(n):
+        low = n.lower()
+        return not low.startswith("armor") and "nipple" not in low
+    out = []
+    px = gl.PXM
+    if "boobs" in bones:
+        bs = {n for n in subtree(bones, "boobs") if keep(n)}
+        nip = {n for n in subtree(bones, "boobs") if "nipple" in n.lower()}
+        for side, s in (("L", 1), ("R", -1)):
+            out.append(dict(name=f"breast.{side}", bones=bs, split_x=s, center_shift=(0, 1.3 * px, 0),
+                            subdiv=6, smooth=40, cone=2.0))
+            if nip:
+                out.append(dict(name=f"nipple.{side}", bones=nip, split_x=s, center_shift=(0, 0.25 * px, 0),
+                                subdiv=5, smooth=10, cone=4.0, weight_smooth=2))
+    if "booty" in bones:
+        bs = {n for n in subtree(bones, "booty") if keep(n)}
+        for side, s in (("L", 1), ("R", -1)):
+            out.append(dict(name=f"butt.{side}", bones=bs, split_x=s, center_shift=(0, -1.4 * px, 0.2 * px),
+                            subdiv=6, smooth=40, cone=2.0))
+    if variant == "nude" and "vagina" in bones:
+        skip = ("asshole", "fuckhole", "inside")
+        bs = {n for n in subtree(bones, "vagina")
+              if keep(n) and not any(n.lower().startswith(k) for k in skip)}
+        out.append(dict(name="vulva", bones=bs, center_shift=(0, 0.9 * px, 0.6 * px),
+                        subdiv=6, smooth=30, cone=2.4, weight_smooth=4))
+    return out
+
+
+def convert(char, variant, anim=True, render=False, fps=24, smooth=True):
     title = f"{char.capitalize()}_{variant.capitalize()}"
     geo = os.path.join(SRC, char, f"{char}{variant}.geo.json")
     tex = os.path.join(SRC, char, f"{char}.png")
@@ -113,6 +144,19 @@ def convert(char, variant, anim=True, render=False, fps=24):
         objs[gname] = ob
         print(f"[import] {gname}: {len(names)} bones with cubes, {len(f)} faces", flush=True)
 
+    if smooth and "Body" in objs:
+        from PIL import Image
+        from lib import smooth_regions as sr
+        tex_arr = np.array(Image.open(tex).convert("RGBA"))
+        smat = sr.color_material(f"{title}_smooth")
+        sob, region = sr.build_smooth(title, col, objs["Body"], rig, smooth_lobes(bones, variant), tex_arr, smat)
+        if sob is not None:
+            blocky = sr.split_blocky(objs["Body"], region, title, col)
+            objs["Smooth"], objs["BlockyParts"] = sob, blocky
+            add_prop(rig, "smooth", 1, "1 = smooth breasts/butt/vulva, 0 = the original blocky cubes")
+            drive_hide(sob, rig, "smooth", 0)
+            drive_hide(blocky, rig, "smooth", 1)
+
     add_prop(rig, "steve", 0, "Show the Steve partner model used by the scene animations")
     for k in ("Steve", "SteveCock"):
         if k in objs:
@@ -162,10 +206,11 @@ def main():
     ap.add_argument("--variants", default="nude,dressed")
     ap.add_argument("--no-anim", action="store_true")
     ap.add_argument("--render", action="store_true")
+    ap.add_argument("--blocky", action="store_true", help="skip the smooth lobes")
     a = ap.parse_args(argv)
     for c in a.characters:
         for v in a.variants.split(","):
-            p, made = convert(c, v, anim=not a.no_anim, render=a.render)
+            p, made = convert(c, v, anim=not a.no_anim, render=a.render, smooth=not a.blocky)
             print(f"RESULT {c} {v} {p} actions={len(made)}", flush=True)
 
 

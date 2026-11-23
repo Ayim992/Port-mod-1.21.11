@@ -67,7 +67,13 @@ def smooth_lobes(bones, variant, style=None):
     if "boobs" in bones:
         bs = {n for n in subtree(bones, "boobs") if keep(n)}
         nip = {n for n in subtree(bones, "boobs") if "nipple" in n.lower()}
-        for side, s in (("L", 1), ("R", -1)):
+        if style and variant == "dressed":
+            # a shirt stretches across both breasts: one lobe spanning the cleavage (no split down the
+            # middle), one plain sweater colour
+            out.append(dict(name="breasts", bones=bs | nip, center_shift=(0, 1.3 * px, 0),
+                            subdiv=7, smooth=60, cone=1.6, uniform_color=True))
+            bs = set()
+        for side, s in (("L", 1), ("R", -1)) if bs else ():
             # the nipple/areola cubes are part of the breast surface (leaving them out leaves a dent)
             out.append(dict(name=f"breast.{side}", bones=bs | nip, split_x=s, center_shift=(0, 1.3 * px, 0),
                             subdiv=7 if style else 6, smooth=BREAST_SMOOTH * (4 if style else 1), cone=2.0, full_breast=True, press=0.55,

@@ -252,6 +252,8 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
         dist, cidx = ctree.query(V, k=4)
         w = 1.0 / np.maximum(dist, 1e-5)
         col_v = (Co[cidx] * w[..., None]).sum(axis=1) / w.sum(axis=1, keepdims=True)
+        if lb.get("uniform_color"):
+            col_v[:] = np.median(col_v, axis=0)
         tree = cKDTree(P)
         _, pick = tree.query(V, k=1)
         bone_v = B[pick]

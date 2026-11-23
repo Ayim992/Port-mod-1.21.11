@@ -275,7 +275,11 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
                 skin = np.median(col_v[ring], axis=0)
                 core = d < 0.5 * PXM
                 acol0 = np.median(col_v[core], axis=0) if core.any() else skin * 0.85
-                col_v[d < 2.0 * PXM] = skin
+                if lb.get("uniform_skin"):
+                    # one plain skin colour over the whole breast; only areola + nipple differ
+                    col_v[:] = skin
+                else:
+                    col_v[d < 2.0 * PXM] = skin
                 zone = d < 2.2 * PXM
                 rel = V - center
                 rr = np.linalg.norm(rel, axis=1)

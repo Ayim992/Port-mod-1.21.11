@@ -206,6 +206,14 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
                 zone = d < 2.2 * PXM
                 V = _laplace(V, E, len(V), 40, 0.5, fixed=~zone)
                 col_v = _laplace(col_v, E, len(V), 2, 0.5, fixed=~(d < 2.4 * PXM))
+                # small raised nipple: a soft dome over the areola, pushed out along the surface normal
+                h = lb.get("nipple_height", 0.0) * PXM
+                if h > 0:
+                    nr = R * 1.05
+                    dd = np.linalg.norm(V - tip, axis=1)
+                    prof = np.where(dd < nr, 0.5 * (1 + np.cos(np.pi * dd / nr)), 0.0)
+                    nrm = (V - center) / np.linalg.norm(V - center, axis=1, keepdims=True)
+                    V = V + nrm * (h * prof)[:, None]
         allV.append(V)
         allF.append(F + sum(len(v) for v in allV[:-1]))
         allC.append(col_v)

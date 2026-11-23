@@ -8,3 +8,6 @@ out/renders/drop/
 out/renders/drop_frames/
 out/renders/faces/
 out/renders/*.log
+out/renders/warden/
+out/renders/warden_frames/
+out/renders/wdiag*

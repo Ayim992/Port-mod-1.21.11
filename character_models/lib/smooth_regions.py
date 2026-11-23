@@ -273,6 +273,8 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             ring = (d > 2.0 * PXM) & (d < 2.6 * PXM)
             if ring.any():
                 skin = np.median(col_v[ring], axis=0)
+                core = d < 0.5 * PXM
+                acol0 = np.median(col_v[core], axis=0) if core.any() else skin * 0.85
                 col_v[d < 2.0 * PXM] = skin
                 zone = d < 2.2 * PXM
                 rel = V - center
@@ -281,18 +283,25 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
                 rr = _laplace(rr, E, len(V), 60, 0.5, fixed=~zone)
                 V = center + dirs * rr[:, None]
                 col_v = _laplace(col_v, E, len(V), 3, 0.5, fixed=~(d < 2.4 * PXM))
-                sig = lb.get("nipple_sigma", 0.36) * PXM
-                h = lb.get("nipple_height", 0.0) * PXM
                 tip = V[np.argmin(np.linalg.norm(V - tip, axis=1))]
                 dd = np.linalg.norm(V - tip, axis=1)
-                prof = np.exp(-(dd / sig) ** 2)
-                prof[dd > 3 * sig] = 0.0
-                V = V + dirs * (h * prof)[:, None]
-                tint = lb.get("nipple_tint", 0.0)
-                if tint:
-                    pink = np.array([0.95, 0.68, 0.66])
-                    wt = (tint * prof)[:, None]
-                    col_v = col_v * (1 - wt) + pink * wt
+                ar = lb.get("areola_radius", 0.0) * PXM
+                if ar > 0:
+                    # flat, plain, darker disc with a crisp edge (colour only, follows the breast curve)
+                    acol = acol0 * lb.get("areola_dark", 1.0)
+                    t = np.clip((ar - dd) / (0.1 * PXM) + 0.5, 0, 1)[:, None]
+                    col_v = col_v * (1 - t) + acol * t
+                nr = lb.get("nipple_radius", 0.0) * PXM
+                h = lb.get("nipple_height", 0.0) * PXM
+                if nr > 0 and h > 0:
+                    # small round nipple standing out of the areola: flat-topped with a rounded edge
+                    edge = 0.35 * nr
+                    x = np.clip((nr - dd) / edge, 0, 1)
+                    prof = x * x * (3 - 2 * x)
+                    V = V + dirs * (h * prof)[:, None]
+                    ncol = acol0 * lb.get("areola_dark", 1.0) * lb.get("nipple_dark", 0.92)
+                    t = np.clip((nr + 0.03 * PXM - dd) / (0.04 * PXM), 0, 1)[:, None]
+                    col_v = col_v * (1 - t) + ncol * t
         if lb.get("full_breast") and lb.get("split_x"):
             # push the two full breasts into each other, then let the contact flatten them
             # (stretch the inner side toward the midline about the outer edge, so the outer

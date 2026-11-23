@@ -184,6 +184,17 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             Wl[:, j] = bone_v == gi
         Wl = _laplace(Wl, E, len(V), lb.get("weight_smooth", 6), 0.5)
         Wl /= np.maximum(Wl.sum(axis=1, keepdims=True), 1e-9)
+        if lb.get("areola_scale") and any("nipple" in gnames.get(b, "").lower() for b in np.unique(B)):
+            # SlipperyT-style areola: wider, flat, same colour as the model's own areola
+            nipm = np.array(["nipple" in gnames.get(b, "").lower() for b in B])
+            tip = P[nipm].mean(axis=0)
+            d = np.linalg.norm(V - tip, axis=1)
+            core = d < 0.55 * PXM
+            if core.any():
+                acol = np.median(col_v[core], axis=0)
+                R = lb["areola_scale"] * PXM
+                t = np.clip((R - d) / (0.25 * PXM), 0, 1)[:, None]
+                col_v = col_v * (1 - t) + acol * t
         allV.append(V)
         allF.append(F + sum(len(v) for v in allV[:-1]))
         allC.append(col_v)

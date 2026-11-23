@@ -71,7 +71,7 @@ def smooth_lobes(bones, variant, style=None):
             # the nipple/areola cubes are part of the breast surface (leaving them out leaves a dent)
             out.append(dict(name=f"breast.{side}", bones=bs | nip, split_x=s, center_shift=(0, 1.3 * px, 0),
                             subdiv=6, smooth=BREAST_SMOOTH, cone=2.0, full_breast=True, press=0.55,
-                            areola_scale=0.55 if style else None, areola_light=0.25 if style else 0.0,
+                            soft_nipple=bool(style), nipple_sigma=0.36, nipple_tint=0.22,
                             nipple_height=0.32 if style else 0.0))
             if nip:
                 # plus a firmer nipple on top so it keeps poking out after smoothing

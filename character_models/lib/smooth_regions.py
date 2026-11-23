@@ -262,41 +262,37 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             Wl[:, j] = bone_v == gi
         Wl = _laplace(Wl, E, len(V), lb.get("weight_smooth", 6), 0.5)
         Wl /= np.maximum(Wl.sum(axis=1, keepdims=True), 1e-9)
-        if lb.get("areola_scale") and any("nipple" in gnames.get(b, "").lower() for b in np.unique(B)):
-            # SlipperyT-style areola: wider, flat, same colour as the model's own areola
+        if lb.get("soft_nipple") and any("nipple" in gnames.get(b, "").lower() for b in np.unique(B)):
+            # SlipperyT Jenny: no areola disc. The skin around the nipple takes the plain skin colour,
+            # the mod's raised areola plate is relaxed away *radially* (a position Laplacian flattens
+            # the patch into a disc that shades darker), and the nipple is a small gaussian swell
+            # that blends into the breast with no rim.
             nipm = np.array(["nipple" in gnames.get(b, "").lower() for b in B])
             tip = P[nipm].mean(axis=0)
             d = np.linalg.norm(V - tip, axis=1)
-            core = d < 0.55 * PXM
-            if core.any():
-                acol = np.median(col_v[core], axis=0)
-                ring0 = (d > 2.0 * PXM) & (d < 2.6 * PXM)
-                if lb.get("areola_light") and ring0.any():
-                    # no dark areola: skin tone nudged slightly pink
-                    skin0 = np.median(col_v[ring0], axis=0)
-                    acol = skin0 * (1 - lb["areola_light"]) + np.array([0.96, 0.70, 0.68]) * lb["areola_light"]
-                R = lb["areola_scale"] * PXM
-                # skin colour from a ring well outside the original areola: lets the areola shrink too
-                ring = (d > 2.0 * PXM) & (d < 2.6 * PXM)
-                skin = np.median(col_v[ring], axis=0) if ring.any() else None
-                if skin is not None:
-                    outer = (d > R) & (d < 1.9 * PXM)
-                    col_v[outer] = skin
-                t = np.clip((R - d) / (0.15 * PXM), 0, 1)[:, None]
-                col_v = col_v * (1 - t) + acol * t
-                # flatten the old raised areola plate so its edge doesn't show as a ridge,
-                # and soften the colour edge
+            ring = (d > 2.0 * PXM) & (d < 2.6 * PXM)
+            if ring.any():
+                skin = np.median(col_v[ring], axis=0)
+                col_v[d < 2.0 * PXM] = skin
                 zone = d < 2.2 * PXM
-                V = _laplace(V, E, len(V), 40, 0.5, fixed=~zone)
-                col_v = _laplace(col_v, E, len(V), 2, 0.5, fixed=~(d < 2.4 * PXM))
-                # small raised nipple: a soft dome over the areola, pushed out along the surface normal
+                rel = V - center
+                rr = np.linalg.norm(rel, axis=1)
+                dirs = rel / rr[:, None]
+                rr = _laplace(rr, E, len(V), 60, 0.5, fixed=~zone)
+                V = center + dirs * rr[:, None]
+                col_v = _laplace(col_v, E, len(V), 3, 0.5, fixed=~(d < 2.4 * PXM))
+                sig = lb.get("nipple_sigma", 0.36) * PXM
                 h = lb.get("nipple_height", 0.0) * PXM
-                if h > 0:
-                    nr = R * 1.05
-                    dd = np.linalg.norm(V - tip, axis=1)
-                    prof = np.where(dd < nr, 0.5 * (1 + np.cos(np.pi * dd / nr)), 0.0)
-                    nrm = (V - center) / np.linalg.norm(V - center, axis=1, keepdims=True)
-                    V = V + nrm * (h * prof)[:, None]
+                tip = V[np.argmin(np.linalg.norm(V - tip, axis=1))]
+                dd = np.linalg.norm(V - tip, axis=1)
+                prof = np.exp(-(dd / sig) ** 2)
+                prof[dd > 3 * sig] = 0.0
+                V = V + dirs * (h * prof)[:, None]
+                tint = lb.get("nipple_tint", 0.0)
+                if tint:
+                    pink = np.array([0.95, 0.68, 0.66])
+                    wt = (tint * prof)[:, None]
+                    col_v = col_v * (1 - wt) + pink * wt
         if lb.get("full_breast") and lb.get("split_x"):
             # push the two full breasts into each other, then let the contact flatten them
             # (stretch the inner side toward the midline about the outer edge, so the outer

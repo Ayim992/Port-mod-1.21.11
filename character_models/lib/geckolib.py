@@ -161,6 +161,9 @@ def _inside_any(p, solids, margin=1e-4):
     return bool(np.any(np.all((q > los + margin) & (q < his - margin), axis=1)))
 
 
+DECAL_SPLIT = {"blush": 0.002}
+
+
 def cubes_to_mesh(bones, order, W, tex_w, tex_h, bone_filter, cull_buried_planes=True, moving=()):
     """Return verts (Blender meters), quads, per-loop uvs, per-vertex bone index, bone names.
 
@@ -199,8 +202,9 @@ def cubes_to_mesh(bones, order, W, tex_w, tex_h, bone_filter, cull_buried_planes
             # paper-thin planes: pull the two faces 0.01 px apart so the one facing the camera
             # always wins (coincident faces flicker or go black in a path tracer)
             flat = ext <= 1e-6
-            lo = lo - 0.01 * flat
-            hi = hi + 0.01 * flat
+            split = DECAL_SPLIT.get(n, 0.01)  # blush sits under the eye decals, like in game
+            lo = lo - split * flat
+            hi = hi + split * flat
             for face, spec in uvd.items():
                 if face not in _FACE_CORNERS:
                     continue

@@ -4,3 +4,7 @@ __pycache__/
 out/renders/*.png
 !out/renders/*_sheet.png
 !out/renders/face_atlases.png
+out/renders/drop/
+out/renders/drop_frames/
+out/renders/faces/
+out/renders/*.log

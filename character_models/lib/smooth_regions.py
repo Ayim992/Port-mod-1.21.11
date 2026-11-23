@@ -119,7 +119,8 @@ def _ray_sphere(o, D, c, R):
     return -b + np.sqrt(np.maximum(b * b - q, 0.0))
 
 
-def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0.55, roundness=0.0):
+def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0.55, roundness=0.0,
+                mirror_x=0):
     D, F, E = icosphere(subdiv)
     rel = P - center
     rad = np.linalg.norm(rel, axis=1)
@@ -134,6 +135,24 @@ def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0
     known = ~np.isnan(r)
     if known.sum() < 10:
         return None
+    if mirror_x:
+        # complete the hidden inner side (toward the other breast) from the outer side, mirrored
+        # through the lobe's own center: a full breast instead of a half cut flat at the midline
+        inner = (~known) & (D[:, 0] * mirror_x < 0) & (D[:, 1] < 0.35)
+        mt = cKDTree(D)
+        _, mi = mt.query(D * np.array([-1.0, 1.0, 1.0]))
+        take = inner & known[mi]
+        r[take] = r[mi[take]]
+        known = known | take
+        # a full breast reaches past the midline (where the other one pushes back): stretch the
+        # mirrored inner side so it overlaps by ~0.35 px; squish_against_plane then flattens the contact
+        if take.any():
+            reach = (D[take, 0] * -mirror_x) * r[take]          # how far toward the midline it goes
+            need = abs(center[0]) + 0.35 * PXM
+            k = need / max(reach.max(), 1e-9)
+            if k > 1:
+                w = np.clip(-D[:, 0] * mirror_x, 0, 1)            # 0 at the front, 1 straight inward
+                r[take] = r[take] * (1 + (k - 1) * w[take])
     base = np.nanmedian(r) * fill_scale
     r[~known] = base
     # diffuse into the unseen (inside-the-body) directions, then shrink them so they stay hidden
@@ -152,6 +171,29 @@ def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0
     r = _laplace(r, E, len(D), smooth_iters, 0.5)
     V = center + D * r[:, None]
     return V, F, E, known
+
+
+def squish_against_plane(V, E, side, gap, bulge=0.35, iters=12):
+    """Soft-body style contact: everything that crosses the midline (x=0) toward the other breast is
+    flattened onto the contact plane, the displaced flesh pushes forward and outward a little, and the
+    surface around the contact is relaxed so the cleavage reads as two soft breasts pressed together."""
+    V = V.copy()
+    x = V[:, 0] * side
+    pen = np.maximum(0.0, gap - x)
+    if not pen.any():
+        return V
+    # flatten onto the contact plane
+    V[:, 0] += side * pen
+    # volume goes forward (-Y) and slightly outward/up, scaled by how deep the contact was
+    V[:, 1] -= bulge * pen
+    V[:, 2] += 0.15 * bulge * pen
+    # relax the skin around the contact, keep the contact plane
+    zone = np.abs(V[:, 0]) < (gap + 0.6 * PXM)
+    for _ in range(iters):
+        V = _laplace(V, E, len(V), 1, 0.5, fixed=~zone)
+        x = V[:, 0] * side
+        V[:, 0] += side * np.maximum(0.0, gap - x)
+    return V
 
 
 # --------------------------------------------------------------------------- build
@@ -185,11 +227,19 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             continue
         P, C, N, B = smp
         center = P.mean(axis=0) + np.asarray(lb.get("center_shift", (0, 0, 0)))
+        Pall, Ball = P, B
+        if lb.get("full_breast") and lb.get("split_x"):
+            # the mod closes each breast with a flat wall at the cleavage: leave it out of the shape
+            # (it is rebuilt by mirroring the outer side), but keep it for colour/bone lookups
+            keep = P[:, 0] * lb["split_x"] > lb.get("mid_exclude", 0.9) * PXM
+            P = P[keep]
         res = radial_lobe(P, center, lb.get("subdiv", 5), lb.get("cone", 2.6), lb.get("smooth", 14),
-                          roundness=lb.get("roundness", 0.0))
+                          roundness=lb.get("roundness", 0.0),
+                          mirror_x=lb.get("split_x", 0) if lb.get("full_breast") else 0)
         if res is None:
             continue
         V, F, E, known = res
+        P = Pall
         region_mask |= mask
         # colour from outward-facing samples only (side faces of plates carry darker edge texels),
         # averaged over the nearest few; bones from the nearest sample of any kind
@@ -242,6 +292,17 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
                     prof = np.where(dd < nr, 0.5 * (1 + np.cos(np.pi * dd / nr)), 0.0)
                     nrm = (V - center) / np.linalg.norm(V - center, axis=1, keepdims=True)
                     V = V + nrm * (h * prof)[:, None]
+        if lb.get("full_breast") and lb.get("split_x"):
+            # push the two full breasts into each other, then let the contact flatten them
+            # (stretch the inner side toward the midline about the outer edge, so the outer
+            # silhouette stays exactly where the original model has it)
+            V = V.copy()
+            sx = lb["split_x"]
+            xs = V[:, 0] * sx
+            xo, xi = xs.max(), xs.min()
+            k = (xo - xi + lb.get("press", 0.0) * PXM) / max(xo - xi, 1e-9)
+            V[:, 0] = sx * (xo - (xo - xs) * k)
+            V = squish_against_plane(V, E, lb["split_x"], gap=0.03 * PXM, bulge=lb.get("bulge", 0.35))
         if lb.get("scale") or lb.get("offset"):
             # reshape the lobe toward the film proportions: scale about its own base, then move
             sc = np.asarray(lb.get("scale", 1.0), dtype=np.float64)

@@ -92,6 +92,32 @@ def smooth_lobes(bones, variant, style=None):
     return out
 
 
+def paint_sheet_blush(tex_path, out_path):
+    """Jenny's `blush` cube only carries a faint skin shade; paint two pink cheek ovals like the
+    June 2020 sheet (outside them the plane is transparent, so the face shows through)."""
+    from PIL import Image
+    a = np.array(Image.open(tex_path).convert("RGBA")).astype(np.float64)
+    s = 64  # texels per model pixel in this 4096 texture
+    u0, v0, w, h = 43.875, 14.11719, 5.25, 1.98438
+    x0, y0, x1, y1 = int(u0 * s), int(v0 * s), int((u0 + w) * s), int((v0 + h) * s)
+    reg = a[y0:y1, x0:x1]
+    H, Wd = reg.shape[:2]
+    yy, xx = np.mgrid[0:H, 0:Wd]
+    pink = np.array([236.0, 132.0, 142.0])
+    alpha = np.zeros((H, Wd))
+    for cx in (0.16, 0.84):
+        d = ((xx / Wd - cx) / 0.13) ** 2 + ((yy / H - 0.78) / 0.26) ** 2
+        alpha = np.maximum(alpha, np.clip(1.4 * (1 - d), 0, 1))
+    skin = np.array([248.0, 202.0, 168.0])
+    col = skin * (1 - 0.5 * alpha[..., None]) + pink * (0.5 * alpha[..., None])
+    reg[..., :3] = col
+    reg[..., 3] = np.where(alpha > 0.15, 255, 0)
+    a[y0:y1, x0:x1] = reg
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    Image.fromarray(a.astype(np.uint8), "RGBA").save(out_path)
+    return out_path
+
+
 def convert(char, variant, anim=True, render=False, fps=24, smooth=True, style=None):
     title = f"{char.capitalize()}_{variant.capitalize()}" + (f"_{style}" if style else "")
     geo = os.path.join(SRC, char, f"{char}{variant}.geo.json")
@@ -111,6 +137,8 @@ def convert(char, variant, anim=True, render=False, fps=24, smooth=True, style=N
     desc, bones, order = gl.load_geo(geo)
     W = gl.rest_world(bones, order)
     tw, th = desc.get("texture_width", 64), desc.get("texture_height", 64)
+    if style and char == "jenny":
+        tex = paint_sheet_blush(tex, os.path.join(OUT, "textures", f"{title}_src.png"))
     mat = gl.texture_material(f"{title}_tex", tex)
 
     steve = subtree(bones, "steve")
@@ -141,10 +169,11 @@ def convert(char, variant, anim=True, render=False, fps=24, smooth=True, style=N
     fb.inputs["Roughness"].default_value = 0.5
     mats = {"Steve": mat_skin, "SteveCock": mat_flesh}
 
+    moving = gl.moving_bones(bones, [anim_path, os.path.join(SRC, char, "faces.animation.json")])
     rig, A = gl.build_armature(f"{title}_rig", col, bones, order, W)
     objs = {}
     for gname, flt in groups.items():
-        v, f, uv, vb, names = gl.cubes_to_mesh(bones, order, W, tw, th, flt)
+        v, f, uv, vb, names = gl.cubes_to_mesh(bones, order, W, tw, th, flt, moving=moving)
         if len(f) == 0:
             continue
         ob = gl.build_mesh_object(f"{title}_{gname}", col, v, f, uv, vb, names, mats.get(gname, mat))
@@ -187,8 +216,14 @@ def convert(char, variant, anim=True, render=False, fps=24, smooth=True, style=N
     if anim and os.path.exists(anim_path):
         made = gl.bake_animations(rig, A, W, bones, order, anim_path, fps=fps)
         print(f"[import] baked {len(made)} animations", flush=True)
+        face_path = os.path.join(SRC, char, "faces.animation.json")
+        faces = []
+        if os.path.exists(face_path):
+            # static face poses (the sheet's half-lidded, blushing smug face); the default look
+            faces = gl.bake_animations(rig, A, W, bones, order, face_path, fps=fps)
+            made += faces
         ad = rig.animation_data_create()
-        idle = next(((a, s) for a, s in made if a.name.endswith("idle")), made[0])
+        idle = faces[0] if faces else next(((a, s) for a, s in made if a.name.endswith("idle")), made[0])
         ad.action, ad.action_slot = idle
         sc.frame_start, sc.frame_end = int(idle[0].frame_range[0]), int(idle[0].frame_range[1])
 

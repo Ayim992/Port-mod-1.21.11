@@ -161,7 +161,7 @@ def _inside_any(p, solids, margin=1e-4):
     return bool(np.any(np.all((q > los + margin) & (q < his - margin), axis=1)))
 
 
-def cubes_to_mesh(bones, order, W, tex_w, tex_h, bone_filter, cull_buried_planes=True):
+def cubes_to_mesh(bones, order, W, tex_w, tex_h, bone_filter, cull_buried_planes=True, moving=()):
     """Return verts (Blender meters), quads, per-loop uvs, per-vertex bone index, bone names.
 
     Zero-thickness cubes (decal planes) get both faces like in game, except a face that points
@@ -209,7 +209,9 @@ def cubes_to_mesh(bones, order, W, tex_w, tex_h, bone_filter, cull_buried_planes
                 other = [i for i in range(3) if i != ax]
                 if ext[other[0]] <= 1e-9 or ext[other[1]] <= 1e-9:
                     continue
-                if solids is not None and ext[ax] <= 1e-6:
+                # (pieces that animations slide out, e.g. alternate eyes/mouths/blush parked inside
+                # the head, are never culled)
+                if solids is not None and ext[ax] <= 1e-6 and n not in moving:
                     sign = 1.0 if face in ("south", "east", "up") else -1.0
                     cen = (lo + hi) / 2
                     cen[ax] += sign * 0.08
@@ -558,3 +560,27 @@ def bake_animations(rig, A, W, bones, order, anim_path, fps=24, prefix=""):
         made.append((act, slot))
     return made
 
+
+
+def moving_bones(bones, anim_paths):
+    """Bones (and their descendants) that any animation translates or scales."""
+    hit = set()
+    for p in anim_paths:
+        try:
+            anims = json.load(open(p))["animations"]
+        except (OSError, ValueError, KeyError):
+            continue
+        for a in anims.values():
+            for bn, ch in (a.get("bones") or {}).items():
+                if bn in bones and ("position" in ch or "scale" in ch):
+                    hit.add(bn)
+    kids = {}
+    for n, b in bones.items():
+        kids.setdefault(b.get("parent"), []).append(n)
+    out, stack = set(), list(hit)
+    while stack:
+        n = stack.pop()
+        if n not in out:
+            out.add(n)
+            stack += kids.get(n, [])
+    return out

@@ -1,0 +1,143 @@
+{
+ "format_version": "1.8.0",
+ "animations": {
+  "animation.jenny.face_smug": {
+   "loop": true,
+   "animation_length": 0.04,
+   "_note": "half-lidded eyes taken from the strip animation at 2.5 s, blush shown, default smug mouth",
+   "bones": {
+    "openL": {
+     "position": [
+      0.0,
+      -0.4,
+      0.0
+     ]
+    },
+    "openR": {
+     "position": [
+      0.0,
+      -0.4,
+      0.0
+     ]
+    },
+    "belowWhite": {
+     "position": [
+      0.0,
+      0.5,
+      0.0
+     ]
+    },
+    "belowWhite2": {
+     "position": [
+      0.0,
+      0.5,
+      0.0
+     ]
+    },
+    "innerLashL": {
+     "position": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      0.8,
+      1.0
+     ]
+    },
+    "innerLashR": {
+     "position": [
+      0.0,
+      0.1,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      0.8,
+      1.0
+     ]
+    },
+    "outerLashL": {
+     "position": [
+      0.0,
+      0.05,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      0.8,
+      1.0
+     ]
+    },
+    "outerLashR": {
+     "position": [
+      0.0,
+      0.05,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      0.8,
+      1.0
+     ]
+    },
+    "irsisFaceL": {
+     "position": [
+      0.0,
+      0.32,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      0.6,
+      1.0
+     ]
+    },
+    "irsisFaceR": {
+     "position": [
+      0.0,
+      0.32,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      0.6,
+      1.0
+     ]
+    },
+    "whiteL": {
+     "position": [
+      0.0,
+      0.2,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      0.47,
+      1.0
+     ]
+    },
+    "whiteR": {
+     "position": [
+      0.0,
+      0.2,
+      0.0
+     ],
+     "scale": [
+      1.0,
+      0.47,
+      1.0
+     ]
+    },
+    "blush": {
+     "position": [
+      0,
+      0,
+      -1
+     ]
+    }
+   }
+  }
+ }
+}

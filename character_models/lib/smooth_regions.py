@@ -214,6 +214,10 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
                     prof = np.where(dd < nr, 0.5 * (1 + np.cos(np.pi * dd / nr)), 0.0)
                     nrm = (V - center) / np.linalg.norm(V - center, axis=1, keepdims=True)
                     V = V + nrm * (h * prof)[:, None]
+        if lb.get("scale") or lb.get("offset"):
+            # reshape the lobe toward the film proportions: scale about its own base, then move
+            sc = np.asarray(lb.get("scale", 1.0), dtype=np.float64)
+            V = center + (V - center) * sc + np.asarray(lb.get("offset", (0, 0, 0)))
         allV.append(V)
         allF.append(F + sum(len(v) for v in allV[:-1]))
         allC.append(col_v)

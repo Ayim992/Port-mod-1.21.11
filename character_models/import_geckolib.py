@@ -53,6 +53,9 @@ def drive_hide(ob, rig, prop, hide_when=0):
         d.expression = f"round(v) == {hide_when}"
 
 
+BREAST_SMOOTH = 40
+
+
 def smooth_lobes(bones, variant, style=None):
     """Which bone subtrees become smooth lobes. Armor overlays, nipples and the interior/anus
     pieces stay as the original cubes."""
@@ -67,13 +70,9 @@ def smooth_lobes(bones, variant, style=None):
         for side, s in (("L", 1), ("R", -1)):
             # the nipple/areola cubes are part of the breast surface (leaving them out leaves a dent)
             out.append(dict(name=f"breast.{side}", bones=bs | nip, split_x=s, center_shift=(0, 1.3 * px, 0),
-                            subdiv=6, smooth=48 if style else 40, cone=2.0,
+                            subdiv=6, smooth=BREAST_SMOOTH, cone=2.0,
                             areola_scale=0.55 if style else None,
-                            nipple_height=0.32 if style else 0.0,
-                            # SlipperyT's film Jenny: smaller, rounder, higher, set further apart
-                            roundness=0.85 if style else 0.0,
-                            scale=(0.93, 0.92, 0.90) if style else None,
-                            offset=(s * 0.1 * px, 0, 0.35 * px) if style else None))
+                            nipple_height=0.32 if style else 0.0))
             if nip:
                 # plus a firmer nipple on top so it keeps poking out after smoothing
                 if not style:  # SlipperyT's Jenny has flat, wide areolas without a peg nipple

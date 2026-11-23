@@ -270,6 +270,11 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             core = d < 0.55 * PXM
             if core.any():
                 acol = np.median(col_v[core], axis=0)
+                ring0 = (d > 2.0 * PXM) & (d < 2.6 * PXM)
+                if lb.get("areola_light") and ring0.any():
+                    # no dark areola: skin tone nudged slightly pink
+                    skin0 = np.median(col_v[ring0], axis=0)
+                    acol = skin0 * (1 - lb["areola_light"]) + np.array([0.96, 0.70, 0.68]) * lb["areola_light"]
                 R = lb["areola_scale"] * PXM
                 # skin colour from a ring well outside the original areola: lets the areola shrink too
                 ring = (d > 2.0 * PXM) & (d < 2.6 * PXM)

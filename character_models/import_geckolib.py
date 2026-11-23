@@ -71,6 +71,7 @@ def smooth_lobes(bones, variant, style=None):
                             areola_scale=0.55 if style else None,
                             nipple_height=0.32 if style else 0.0,
                             # SlipperyT's film Jenny: smaller, rounder, higher, set further apart
+                            roundness=0.85 if style else 0.0,
                             scale=(0.93, 0.92, 0.90) if style else None,
                             offset=(s * 0.1 * px, 0, 0.35 * px) if style else None))
             if nip:

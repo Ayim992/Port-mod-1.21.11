@@ -102,7 +102,24 @@ def _laplace(values, E, n, iters, factor=0.5, fixed=None):
     return v
 
 
-def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0.55):
+def _fit_sphere(X):
+    """Least-squares sphere through points X (N,3) -> (center, radius)."""
+    A = np.c_[2 * X, np.ones(len(X))]
+    b = (X * X).sum(axis=1)
+    sol, *_ = np.linalg.lstsq(A, b, rcond=None)
+    c = sol[:3]
+    return c, math.sqrt(max(sol[3] + c @ c, 1e-12))
+
+
+def _ray_sphere(o, D, c, R):
+    """Distance along unit rays D from o (inside the sphere) to the sphere surface."""
+    oc = o - c
+    b = D @ oc
+    q = oc @ oc - R * R
+    return -b + np.sqrt(np.maximum(b * b - q, 0.0))
+
+
+def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0.55, roundness=0.0):
     D, F, E = icosphere(subdiv)
     rel = P - center
     rad = np.linalg.norm(rel, axis=1)
@@ -122,6 +139,16 @@ def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0
     # diffuse into the unseen (inside-the-body) directions, then shrink them so they stay hidden
     r = _laplace(r, E, len(D), 80, 0.5, fixed=known)
     r[~known] = np.minimum(r[~known], base * 1.15)
+    if roundness > 0:
+        # pull the shape toward the best-fit sphere of its visible surface (film Jenny's round breasts)
+        sc, sr = _fit_sphere(center + D[known] * r[known, None])
+        if np.linalg.norm(center - sc) < sr:
+            rs = _ray_sphere(center, D, sc, sr)
+            blend = np.where(known, roundness, 0.0)
+            # unseen (inside-body) directions may only shrink toward the sphere
+            r_new = r * (1 - blend) + rs * blend
+            r_new[~known] = np.minimum(r[~known], rs[~known])
+            r = r_new
     r = _laplace(r, E, len(D), smooth_iters, 0.5)
     V = center + D * r[:, None]
     return V, F, E, known
@@ -158,7 +185,8 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             continue
         P, C, N, B = smp
         center = P.mean(axis=0) + np.asarray(lb.get("center_shift", (0, 0, 0)))
-        res = radial_lobe(P, center, lb.get("subdiv", 5), lb.get("cone", 2.6), lb.get("smooth", 14))
+        res = radial_lobe(P, center, lb.get("subdiv", 5), lb.get("cone", 2.6), lb.get("smooth", 14),
+                          roundness=lb.get("roundness", 0.0))
         if res is None:
             continue
         V, F, E, known = res

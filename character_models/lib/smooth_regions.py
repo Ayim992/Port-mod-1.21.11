@@ -193,8 +193,19 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             if core.any():
                 acol = np.median(col_v[core], axis=0)
                 R = lb["areola_scale"] * PXM
-                t = np.clip((R - d) / (0.25 * PXM), 0, 1)[:, None]
+                # skin colour from a ring well outside the original areola: lets the areola shrink too
+                ring = (d > 2.0 * PXM) & (d < 2.6 * PXM)
+                skin = np.median(col_v[ring], axis=0) if ring.any() else None
+                if skin is not None:
+                    outer = (d > R) & (d < 1.9 * PXM)
+                    col_v[outer] = skin
+                t = np.clip((R - d) / (0.15 * PXM), 0, 1)[:, None]
                 col_v = col_v * (1 - t) + acol * t
+                # flatten the old raised areola plate so its edge doesn't show as a ridge,
+                # and soften the colour edge
+                zone = d < 2.2 * PXM
+                V = _laplace(V, E, len(V), 40, 0.5, fixed=~zone)
+                col_v = _laplace(col_v, E, len(V), 2, 0.5, fixed=~(d < 2.4 * PXM))
         allV.append(V)
         allF.append(F + sum(len(v) for v in allV[:-1]))
         allC.append(col_v)

@@ -93,7 +93,8 @@ def smooth_lobes(bones, variant, style=None):
             # one lobe over both cheeks, like the Blockbench model: pressed tight with a soft crease,
             # no gap down the middle (each cheek still follows its own bone through the weights)
             out.append(dict(name="butt", bones=bs, center_shift=(0, -1.6 * px, 0.2 * px),
-                            subdiv=7, smooth=50, cone=1.4, weight_smooth=8, **colour))
+                            subdiv=7, smooth=50, cone=1.4, weight_smooth=8,
+                            keep_top=1.0 if variant == "dressed" else 0.0, **colour))
         else:
             for side, s in (("L", 1), ("R", -1)):
                 out.append(dict(name=f"butt.{side}", bones=bs, split_x=s, center_shift=(0, -1.4 * px, 0.2 * px),

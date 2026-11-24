@@ -245,6 +245,12 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             continue
         V, F, E, known = res
         P = Pall
+        if lb.get("keep_top"):
+            # keep the original cubes along the top edge (e.g. the pants waistband): smoothing rounds
+            # that edge down and would leave notches where skin shows through
+            cz = np.array([p.center.z for p in me.polygons])
+            ztop = cz[mask].max()
+            mask = mask & (cz < ztop - lb["keep_top"] * PXM)
         region_mask |= mask
         # colour from outward-facing samples only (side faces of plates carry darker edge texels),
         # averaged over the nearest few; bones from the nearest sample of any kind

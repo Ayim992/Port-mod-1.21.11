@@ -87,14 +87,17 @@ def smooth_lobes(bones, variant, style=None):
                                     subdiv=6, smooth=6, cone=3.0, weight_smooth=2))
     if "booty" in bones:
         bs = {n for n in subtree(bones, "booty") if keep(n)}
-        for side, s in (("L", 1), ("R", -1)):
-            out.append(dict(name=f"butt.{side}", bones=bs, split_x=s, center_shift=(0, -1.4 * px, 0.2 * px),
-                            subdiv=7 if style else 6, smooth=80 if style else 40, cone=2.0,
-                            # full cheeks pressed together like the breasts (body lies toward -Y)
-                            full_breast=bool(style), press=0.55, body_y=-1.0,
-                            # nude: plain skin like the breasts; dressed: one plain pants colour
-                            skin_match=bool(style) and variant == "nude",
-                            uniform_color=bool(style) and variant == "dressed"))
+        colour = dict(skin_match=bool(style) and variant == "nude",
+                      uniform_color=bool(style) and variant == "dressed")
+        if style:
+            # one lobe over both cheeks, like the Blockbench model: pressed tight with a soft crease,
+            # no gap down the middle (each cheek still follows its own bone through the weights)
+            out.append(dict(name="butt", bones=bs, center_shift=(0, -1.6 * px, 0.2 * px),
+                            subdiv=7, smooth=50, cone=1.4, weight_smooth=8, **colour))
+        else:
+            for side, s in (("L", 1), ("R", -1)):
+                out.append(dict(name=f"butt.{side}", bones=bs, split_x=s, center_shift=(0, -1.4 * px, 0.2 * px),
+                                subdiv=6, smooth=40, cone=2.0))
     if variant == "nude" and "vagina" in bones:
         skip = ("asshole", "fuckhole", "inside")
         bs = {n for n in subtree(bones, "vagina")

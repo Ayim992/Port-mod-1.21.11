@@ -89,13 +89,15 @@ def smooth_lobes(bones, variant, style=None):
         bs = {n for n in subtree(bones, "booty") if keep(n)}
         for side, s in (("L", 1), ("R", -1)):
             out.append(dict(name=f"butt.{side}", bones=bs, split_x=s, center_shift=(0, -1.4 * px, 0.2 * px),
-                            subdiv=6, smooth=40, cone=2.0))
+                            subdiv=6, smooth=40, cone=2.0, skin_match=bool(style)))
     if variant == "nude" and "vagina" in bones:
         skip = ("asshole", "fuckhole", "inside")
         bs = {n for n in subtree(bones, "vagina")
               if keep(n) and not any(n.lower().startswith(k) for k in skip)}
         out.append(dict(name="vulva", bones=bs, center_shift=(0, 0.9 * px, 0.6 * px),
-                        subdiv=6, smooth=30, cone=2.4, weight_smooth=4))
+                        subdiv=6, smooth=30, cone=2.4, weight_smooth=4,
+                        skin_match=bool(style), flatten=(0.55, 0.85) if style else None,
+                        slit=0.22 if style else None))
     return out
 
 
@@ -176,7 +178,10 @@ def convert(char, variant, anim=True, render=False, fps=24, smooth=True, style=N
     fb.inputs["Roughness"].default_value = 0.5
     mats = {"Steve": mat_skin, "SteveCock": mat_flesh}
 
+    # only face pieces (alternate eyes/mouths/blush parked inside the head) are exempt from culling;
+    # other animated parts keep it (e.g. the dark crotch pieces under the dressed pants)
     moving = gl.moving_bones(bones, [anim_path, os.path.join(SRC, char, "faces.animation.json")])
+    moving &= subtree(bones, "head")
     rig, A = gl.build_armature(f"{title}_rig", col, bones, order, W)
     objs = {}
     for gname, flt in groups.items():

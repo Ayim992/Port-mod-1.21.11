@@ -205,6 +205,9 @@ def _mesh(name, V, F):
     return me
 
 
+SKIN_REF = [None]
+
+
 def build_smooth(title, col, body, rig, lobes, tex, material):
     """lobes: list of dict(name, bones(set), center_shift(vec m), split_x(+1/-1/0), subdiv, smooth, cone).
     Returns (smooth_object, region_face_mask)."""
@@ -275,6 +278,7 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             ring = (d > 2.0 * PXM) & (d < 2.6 * PXM)
             if ring.any():
                 skin = np.median(col_v[ring], axis=0)
+                SKIN_REF[0] = skin
                 core = d < 0.5 * PXM
                 acol0 = np.median(col_v[core], axis=0) if core.any() else skin * 0.85
                 if lb.get("uniform_skin"):
@@ -319,6 +323,23 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             k = (xo - xi + lb.get("press", 0.0) * PXM) / max(xo - xi, 1e-9)
             V[:, 0] = sx * (xo - (xo - xs) * k)
             V = squish_against_plane(V, E, lb["split_x"], gap=0.03 * PXM, bulge=lb.get("bulge", 0.35))
+        if lb.get("skin_match") and SKIN_REF[0] is not None:
+            # same plain skin colour as the breasts (the mod texture paints these darker and orange)
+            col_v[:] = SKIN_REF[0]
+        if lb.get("flatten"):
+            # press the mound back into the body: squash depth toward its deepest (inner) side
+            fy, fz = lb["flatten"]
+            yb = V[:, 1].max()
+            V = V.copy()
+            V[:, 1] = yb - (yb - V[:, 1]) * fy
+            zc = V[:, 2].mean()
+            V[:, 2] = zc + (V[:, 2] - zc) * fz
+            if lb.get("slit") and SKIN_REF[0] is not None:
+                # soft cleft down the middle of the front
+                front = V[:, 1] < (yb - 0.35 * (yb - V[:, 1].min()))
+                w = np.clip(1 - np.abs(V[:, 0]) / (lb["slit"] * PXM), 0, 1) * front
+                V[:, 1] += 0.18 * PXM * w
+                col_v = col_v * (1 - 0.35 * w[:, None]) + np.array([0.80, 0.45, 0.42]) * (0.35 * w[:, None])
         if lb.get("scale") or lb.get("offset"):
             # reshape the lobe toward the film proportions: scale about its own base, then move
             sc = np.asarray(lb.get("scale", 1.0), dtype=np.float64)

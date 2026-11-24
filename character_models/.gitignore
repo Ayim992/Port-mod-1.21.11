@@ -11,3 +11,6 @@ out/renders/*.log
 out/renders/warden/
 out/renders/warden_frames/
 out/renders/wdiag*
+sources/mi_check/
+out/Mi_check_*
+out/renders/Mi_check_*

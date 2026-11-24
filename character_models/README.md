@@ -1,3 +1,19 @@
+# Jenny final deliverables
+
+- `out/Jenny_Final.blend`: SlipperyT-style Jenny with one rig (`Jenny_rig`) and all 40 actions.
+  Rig properties: `outfit` (1 dressed / 0 nude), `smooth` (1 smooth breasts/butt/vulva, 0 original cubes),
+  `steve` (show the partner), `pink_shading` (0..1). The dressed model rides on a hidden armature that copies
+  Jenny_rig's pose bone-for-bone, so every action works in both outfits. Bones are sorted into coloured bone
+  collections (Body & head, Arms, Legs, Face, Breasts, Butt, Genitals; Partner and Armor are hidden by default).
+  Rebuild: `python3 import_geckolib.py jenny --style SlipperyT && python3 make_final.py`.
+- `out/mineimator/Jenny_Nude_SlipperyT/` and `Jenny_Dressed_SlipperyT/` (zipped in `Jenny_Mineimator.zip`):
+  `.mimodel` + texture for Mine-imator (File > Import > model). Every mod bone is a part (same names, pivots,
+  rest rotations), every cube a block (exact size, inflate, pivot, rotation). Mine-imator blocks only take box UV,
+  so `export_mimodel.py` re-bakes the texture into a box-UV atlas (32 texels/px, supersampled).
+  The default face is the sheet face. The smooth breasts/butt are Blender-only (Mine-imator has no meshes),
+  so the Mine-imator model has the original cube shapes. `mimodel_check.py` rebuilds a .mimodel in Blender to
+  check the export.
+
 # Character models: Jenny, Marie, Bia
 
 ## Exact models (from the sexmod GeckoLib files): `out/Jenny_*.blend`, `out/Bia_*.blend`

@@ -209,6 +209,55 @@ def _mesh(name, V, F):
 SKIN_REF = [None]
 
 
+def waistband_sheet(me, body, dark, cen, tex, gnames, col, z_lo_ref):
+    """A smooth pants band over the lower back, replacing the jagged waistband cubes: a thin slab on
+    the back plane from just below the cheeks' top to the top of the waistband, rounded top edge."""
+    ids = np.nonzero(dark)[0]
+    co = np.array([v.co[:] for v in me.vertices])
+    vids = np.unique(np.concatenate([list(me.polygons[i].vertices) for i in ids]))
+    pts = co[vids]
+    yb = float(np.median(cen[ids, 1])) + 0.06 * PXM
+    z0, z1 = min(z_lo_ref - 2.5 * PXM, pts[:, 2].min()), pts[:, 2].max()
+    # width of the back itself just above the band (the side straps must not widen it)
+    nrm = np.array([p.normal[:] for p in me.polygons])
+    above = (nrm[:, 1] > 0.5) & (cen[:, 2] > z1) & (cen[:, 2] < z1 + 1.5 * PXM) & (np.abs(cen[:, 0]) < 3.5 * PXM)
+    if above.any():
+        av = np.unique(np.concatenate([list(me.polygons[i].vertices) for i in np.nonzero(above)[0]]))
+        half = np.abs(co[av, 0]).max() - 0.05 * PXM
+    else:
+        half = np.abs(pts[:, 0]).max()
+    x0, x1 = -half, half
+    nx, nz = 48, 16
+    xs = np.linspace(x0, x1, nx)
+    zs = np.linspace(z0, z1, nz)
+    V, F = [], []
+    # outer sheet; the top two rows curl into the body for a rounded edge
+    for j, z in enumerate(zs):
+        curl = max(0.0, (j - (nz - 3)) / 2.0)
+        for x in xs:
+            edge = min(1.0, min(x - x0, x1 - x) / (0.5 * PXM))     # ends tuck in too
+            V.append((x, yb - 0.25 * PXM * (curl ** 2) - 0.25 * PXM * (1 - edge) ** 2, z - 0.1 * PXM * curl))
+    for j in range(nz - 1):
+        for i in range(nx - 1):
+            a = j * nx + i
+            F.append((a, a + 1, a + nx + 1))
+            F.append((a, a + nx + 1, a + nx))
+    V = np.array(V)
+    F = np.array(F)
+    smp = sample_surface(body, dark, tex)
+    if smp is None:
+        return None
+    P, _, _, B = smp
+    _, nn = cKDTree(P).query(V)
+    bone_v = B[nn]
+    names = sorted({gnames[b] for b in np.unique(bone_v)})
+    W = np.zeros((len(V), len(names)))
+    for j, n in enumerate(names):
+        gi = next(k for k, v in gnames.items() if v == n)
+        W[:, j] = bone_v == gi
+    return V, F, np.tile(col, (len(V), 1)), (names, W)
+
+
 def build_smooth(title, col, body, rig, lobes, tex, material):
     """lobes: list of dict(name, bones(set), center_shift(vec m), split_x(+1/-1/0), subdiv, smooth, cone).
     Returns (smooth_object, region_face_mask)."""
@@ -226,6 +275,27 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             mask &= (cx * lb["split_x"]) > -1e-4
         if not mask.any():
             continue
+        dark = np.zeros(len(me.polygons), bool)
+        if lb.get("absorb_up"):
+            # pull the dark (pants) pieces just above the lobe into it, so the smooth surface runs
+            # up to the top of the waistband instead of stopping under a jagged ledge
+            cen = np.array([p.center[:] for p in me.polygons])
+            nrm = np.array([p.normal[:] for p in me.polygons])
+            ztop = cen[mask, 2].max()
+            xw = np.abs(cen[mask, 0]).max() + 0.3 * PXM
+            ymid = cen[mask, 1].mean()
+            cand = (~mask) & (cen[:, 2] > ztop - 1.5 * PXM) & (cen[:, 2] < ztop + lb["absorb_up"] * PXM) \
+                & (np.abs(cen[:, 0]) < xw) & (cen[:, 1] > 0.5 * PXM) & (nrm[:, 1] > 0.3)
+            if cand.any():
+                H, Wt = tex.shape[:2]
+                uvd = me.uv_layers[0].data
+                for i in np.nonzero(cand)[0]:
+                    p = me.polygons[i]
+                    uv = np.mean([uvd[l].uv[:] for l in p.loop_indices], axis=0)
+                    px = tex[min(H - 1, int((1 - uv[1]) * H)), min(Wt - 1, int(uv[0] * Wt))]
+                    dark[i] = px[3] > 128 and px[:3].mean() < 70
+                dark &= nrm[:, 1] > 0.5          # only the back-facing waistband pieces
+                print(f"[smooth] {lb['name']}: {int(dark.sum())} waistband faces replaced", flush=True)
         smp = sample_surface(body, mask, tex)
         if smp is None:
             continue
@@ -353,6 +423,15 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             # reshape the lobe toward the film proportions: scale about its own base, then move
             sc = np.asarray(lb.get("scale", 1.0), dtype=np.float64)
             V = center + (V - center) * sc + np.asarray(lb.get("offset", (0, 0, 0)))
+        if lb.get("absorb_up") and dark.any():
+            region_mask |= dark
+            wb = waistband_sheet(me, body, dark, cen, tex, gnames, np.median(col_v, axis=0), ztop)
+            if wb is not None:
+                wV, wF, wC, (wnames, wW) = wb
+                allV.append(wV)
+                allF.append(wF + sum(len(v) for v in allV[:-1]))
+                allC.append(wC)
+                allW.append((wnames, wW))
         allV.append(V)
         allF.append(F + sum(len(v) for v in allV[:-1]))
         allC.append(col_v)

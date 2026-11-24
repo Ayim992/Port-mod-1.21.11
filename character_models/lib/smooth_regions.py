@@ -120,7 +120,7 @@ def _ray_sphere(o, D, c, R):
 
 
 def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0.55, roundness=0.0,
-                mirror_x=0):
+                mirror_x=0, body_y=1.0):
     D, F, E = icosphere(subdiv)
     rel = P - center
     rad = np.linalg.norm(rel, axis=1)
@@ -138,7 +138,8 @@ def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0
     if mirror_x:
         # complete the hidden inner side (toward the other breast) from the outer side, mirrored
         # through the lobe's own center: a full breast instead of a half cut flat at the midline
-        inner = (~known) & (D[:, 0] * mirror_x < 0) & (D[:, 1] < 0.35)
+        # body_y: which way the body is (+Y behind the breasts, -Y in front of the butt)
+        inner = (~known) & (D[:, 0] * mirror_x < 0) & (D[:, 1] * body_y < 0.35)
         mt = cKDTree(D)
         _, mi = mt.query(D * np.array([-1.0, 1.0, 1.0]))
         take = inner & known[mi]
@@ -173,7 +174,7 @@ def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0
     return V, F, E, known
 
 
-def squish_against_plane(V, E, side, gap, bulge=0.35, iters=12):
+def squish_against_plane(V, E, side, gap, bulge=0.35, iters=12, out_y=-1.0):
     """Soft-body style contact: everything that crosses the midline (x=0) toward the other breast is
     flattened onto the contact plane, the displaced flesh pushes forward and outward a little, and the
     surface around the contact is relaxed so the cleavage reads as two soft breasts pressed together."""
@@ -185,7 +186,7 @@ def squish_against_plane(V, E, side, gap, bulge=0.35, iters=12):
     # flatten onto the contact plane
     V[:, 0] += side * pen
     # volume goes forward (-Y) and slightly outward/up, scaled by how deep the contact was
-    V[:, 1] -= bulge * pen
+    V[:, 1] += out_y * bulge * pen   # displaced flesh bulges away from the body
     V[:, 2] += 0.15 * bulge * pen
     # relax the skin around the contact, keep the contact plane
     zone = np.abs(V[:, 0]) < (gap + 0.6 * PXM)
@@ -238,7 +239,8 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             P = P[keep]
         res = radial_lobe(P, center, lb.get("subdiv", 5), lb.get("cone", 2.6), lb.get("smooth", 14),
                           roundness=lb.get("roundness", 0.0),
-                          mirror_x=lb.get("split_x", 0) if lb.get("full_breast") else 0)
+                          mirror_x=lb.get("split_x", 0) if lb.get("full_breast") else 0,
+                          body_y=lb.get("body_y", 1.0))
         if res is None:
             continue
         V, F, E, known = res
@@ -322,7 +324,8 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             xo, xi = xs.max(), xs.min()
             k = (xo - xi + lb.get("press", 0.0) * PXM) / max(xo - xi, 1e-9)
             V[:, 0] = sx * (xo - (xo - xs) * k)
-            V = squish_against_plane(V, E, lb["split_x"], gap=0.03 * PXM, bulge=lb.get("bulge", 0.35))
+            V = squish_against_plane(V, E, lb["split_x"], gap=0.03 * PXM, bulge=lb.get("bulge", 0.35),
+                                     out_y=-lb.get("body_y", 1.0))
         if lb.get("skin_match") and SKIN_REF[0] is not None:
             # same plain skin colour as the breasts (the mod texture paints these darker and orange)
             col_v[:] = SKIN_REF[0]

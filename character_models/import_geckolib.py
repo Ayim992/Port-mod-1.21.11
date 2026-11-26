@@ -149,8 +149,8 @@ def smooth_lobes(bones, variant, style=None):
               if keep(n) and not any(n.lower().startswith(k) for k in skip)}
         out.append(dict(name="vulva", bones=bs, center_shift=(0, 0.9 * px, 0.6 * px),
                         subdiv=6, smooth=30, cone=2.4, weight_smooth=4,
-                        skin_match=bool(style), flatten=(0.55, 0.85) if style else None,
-                        slit=0.22 if style else None))
+                        cartoon=(0.3, 0.085, 0.18) if style else None,
+                        scale=(1.2, 1.0, 0.85) if style else None))
     return out
 
 

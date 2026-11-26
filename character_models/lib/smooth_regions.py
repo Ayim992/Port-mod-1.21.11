@@ -535,6 +535,31 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
         if lb.get("skin_match") and SKIN_REF[0] is not None:
             # same plain skin colour as the breasts (the mod texture paints these darker and orange)
             col_v[:] = SKIN_REF[0]
+        if lb.get("cartoon"):
+            # cartoon vulva: keep the model's puffy oval mound, round it off, part it into two soft
+            # lips with a cleft that starts a little below the top and deepens downward, pink inside
+            depth, width, tint = lb["cartoon"]
+            V = V.copy()
+            yb = V[:, 1].max()
+            zt, zb = V[:, 2].max(), V[:, 2].min()
+            h = (zt - V[:, 2]) / max(zt - zb, 1e-9)                 # 0 top .. 1 bottom
+            front = np.clip((yb - V[:, 1]) / max(yb - V[:, 1].min(), 1e-9) * 1.6 - 0.4, 0, 1)
+            along = np.clip((h - 0.22) / 0.25, 0, 1)                 # cleft fades in below the top
+            gx = np.exp(-(V[:, 0] / (width * PXM)) ** 2)
+            w = gx * along * front
+            V[:, 1] += depth * PXM * w                               # push the cleft in
+            # lips bulge slightly out beside the cleft
+            lip = np.exp(-((np.abs(V[:, 0]) - 1.6 * width * PXM) / (1.2 * width * PXM)) ** 2) * along * front
+            V[:, 1] -= 0.08 * PXM * lip
+            V = _laplace(V, E, len(V), 3, 0.5)
+            base = SKIN_REF[0] if SKIN_REF[0] is not None else np.median(col_v, axis=0)
+            pinkish = base * (1 - tint) + np.array([0.98, 0.66, 0.66]) * tint
+            inner = np.array([0.86, 0.40, 0.45])
+            mound = np.clip(front * 1.5, 0, 1)[:, None]
+            col_v = base * (1 - mound) + pinkish * mound
+            wi = np.clip(w * 1.3, 0, 1)[:, None] * 0.85
+            col_v = col_v * (1 - wi) + inner * wi
+            col_v = _laplace(col_v, E, len(V), 4, 0.5)
         if lb.get("flatten"):
             # press the mound back into the body: squash depth toward its deepest (inner) side
             fy, fz = lb["flatten"]

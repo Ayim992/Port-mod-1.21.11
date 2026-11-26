@@ -56,6 +56,43 @@ def drive_hide(ob, rig, prop, hide_when=0):
 BREAST_SMOOTH = 40
 
 
+def lower_body_lobes(bones, order, W, variant):
+    """SlipperyT's Jenny has smooth, continuous hips and thighs that touch: remesh the pelvis and each
+    thigh (above the stockings) from the exact cube volumes. Legs stay separate meshes so they can
+    still spread apart; their inner sides are extended to the midline so no gap shows."""
+    from lib import smooth_body as sbm
+    out = []
+    if variant == "nude":
+        # whole trunk, so the waist runs smoothly from under the chest into the hips
+        trunk = {n for n in ("torso", "hipbend", "upperBodyL", "upperBodyR", "hip", "sideL", "sideR") if n in bones}
+        m = sbm.remesh(bones, order, W, trunk, y_range=(9.0, 24.6), sigma_px=0.45)
+        if m:
+            out.append(dict(name="trunk", bones=trunk, mesh=m, crisp=False))
+    else:
+        # dressed: the crop sweater stays a box; smooth the pants hips only
+        pelvis = {n for n in ("hip", "sideL", "sideR") if n in bones}
+        m = sbm.remesh(bones, order, W, pelvis, y_range=(9.0, 16.05), sigma_px=0.45)
+        if m:
+            out.append(dict(name="pelvis", bones=pelvis, mesh=m, flat_waistline=True))
+        if "vagina" in bones:
+            # the crotch pieces poke through the pants as a black blotch
+            out.append(dict(name="crotch_pieces", bones=subtree(bones, "vagina"), remove_only=True))
+    for s, L in ((1, "L"), (-1, "R")):
+        names = {n for n in (f"leg{L}", f"curves{L}") if n in bones}
+        # legX cube spans x 0.24..3.44 px at y 7.53..12.23: fill the 0.24 px gap to the midline
+        fill = [((-0.45 if s > 0 else -0.9), 7.6, -1.7), ((0.9 if s > 0 else 0.45), 12.6, 1.7)]
+        # and extend the thigh down into the stocking box so nothing shows between them
+        down = [((0.24 if s > 0 else -3.44), 6.4, -1.8), ((3.44 if s > 0 else -0.24), 7.9, 1.8)]
+        m = sbm.remesh(bones, order, W, names, extra_boxes=[tuple(map(tuple, fill)), tuple(map(tuple, down))],
+                       y_range=(6.5, 12.4), sigma_px=0.4)
+        if m:
+            out.append(dict(name=f"thigh.{L}", bones=names, mesh=m, skin_match=variant == "nude"))
+        if variant == "nude" and f"knee{L}" in bones:
+            # the knee side pieces only stick jagged stocking bits out over the smooth thigh
+            out.append(dict(name=f"knee_sides.{L}", bones=subtree(bones, f"knee{L}"), remove_only=True))
+    return out
+
+
 def smooth_lobes(bones, variant, style=None):
     """Which bone subtrees become smooth lobes. Armor overlays, nipples and the interior/anus
     pieces stay as the original cubes."""
@@ -207,8 +244,10 @@ def convert(char, variant, anim=True, render=False, fps=24, smooth=True, style=N
         from lib import smooth_regions as sr
         tex_arr = np.array(Image.open(tex).convert("RGBA"))
         smat = sr.color_material(f"{title}_smooth")
-        sob, region = sr.build_smooth(title, col, objs["Body"], rig, smooth_lobes(bones, variant, style),
-                                      tex_arr, smat)
+        lobes = smooth_lobes(bones, variant, style)
+        if style:
+            lobes = lobes + lower_body_lobes(bones, order, W, variant)  # after the breasts set SKIN_REF
+        sob, region = sr.build_smooth(title, col, objs["Body"], rig, lobes, tex_arr, smat)
         if sob is not None:
             blocky = sr.split_blocky(objs["Body"], region, title, col)
             objs["Smooth"], objs["BlockyParts"] = sob, blocky

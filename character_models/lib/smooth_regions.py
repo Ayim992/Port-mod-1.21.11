@@ -270,6 +270,66 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
     wnames = []
     for lb in lobes:
         mask = np.isin(face_bone, list(lb["bones"]))
+        if lb.get("remove_only"):
+            region_mask |= mask
+            print(f"[smooth] {lb['name']}: {int(mask.sum())} faces hidden", flush=True)
+            continue
+        if "mesh" in lb:
+            # pre-built smooth surface (lib/smooth_body.remesh): only colour + weights needed here
+            V, F = lb["mesh"]
+            if lb.get("z_range"):
+                cz = np.array([p.center.z for p in me.polygons])
+                mask &= (cz > lb["z_range"][0]) & (cz < lb["z_range"][1])
+            smp = sample_surface(body, mask, tex)
+            if smp is None:
+                continue
+            P, C, N, B = smp
+            region_mask |= mask
+            ctr = P.mean(axis=0)
+            outward = np.einsum("ij,ij->i", N, P - ctr) > 0
+            Po, Co = (P[outward], C[outward]) if outward.sum() > 50 else (P, C)
+            # crisp two-tone colouring (skin vs stocking/pants): blending samples smears dark rings
+            _, cidx = cKDTree(Po).query(V, k=5)
+            lum = Co[cidx].mean(axis=1).mean(axis=1)
+            darkv = lum < 0.28
+            light_c = np.median(Co[Co.mean(axis=1) >= 0.28], axis=0) if (Co.mean(axis=1) >= 0.28).any() else Co.mean(0)
+            dark_c = np.median(Co[Co.mean(axis=1) < 0.28], axis=0) if (Co.mean(axis=1) < 0.28).any() else light_c
+            if lb.get("skin_match") and SKIN_REF[0] is not None:
+                light_c = SKIN_REF[0]
+            E = np.unique(np.sort(np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), axis=1), axis=0)
+            if lb.get("skin_match") and SKIN_REF[0] is not None:
+                col_v = np.tile(SKIN_REF[0], (len(V), 1))      # bare thigh: plain skin, no stray texels
+            elif lb.get("crisp", True):
+                # majority filter so single stray verts don't turn into specks
+                dv = _laplace(darkv.astype(float), E, len(V), 24, 0.5) > 0.5
+                if lb.get("flat_waistline"):
+                    # the pants top is a straight waistband: colour by height, cut at the boundary's median
+                    edge = dv[E[:, 0]] != dv[E[:, 1]]
+                    if edge.any():
+                        zl = float(np.median(V[E[edge].ravel(), 2]))
+                        dv = V[:, 2] < zl
+                col_v = np.where(dv[:, None], dark_c, light_c)
+            else:
+                # keep the painted detail (navel, belly creases): weighted nearest samples, lightly blended
+                dist, cidx = cKDTree(Po).query(V, k=4)
+                w = 1.0 / np.maximum(dist, 1e-5)
+                col_v = (Co[cidx] * w[..., None]).sum(axis=1) / w.sum(axis=1, keepdims=True)
+                col_v = _laplace(col_v, E, len(V), 2, 0.5)
+            _, pick = cKDTree(P).query(V)
+            bone_v = B[pick]
+            names = sorted({gnames[b] for b in np.unique(bone_v)})
+            Wl = np.zeros((len(V), len(names)))
+            for j, n in enumerate(names):
+                gi = next(k for k, v in gnames.items() if v == n)
+                Wl[:, j] = bone_v == gi
+            Wl = _laplace(Wl, E, len(V), lb.get("weight_smooth", 10), 0.5)
+            Wl /= np.maximum(Wl.sum(axis=1, keepdims=True), 1e-9)
+            allV.append(V)
+            allF.append(F + sum(len(v) for v in allV[:-1]))
+            allC.append(col_v)
+            allW.append((names, Wl))
+            print(f"[smooth] {lb['name']}: remesh {len(V)} verts, bones {names[:6]}", flush=True)
+            continue
         if lb.get("split_x"):
             cx = np.array([p.center.x for p in me.polygons])
             mask &= (cx * lb["split_x"]) > -1e-4

@@ -65,9 +65,10 @@ def lower_body_lobes(bones, order, W, variant):
     if variant == "nude":
         # whole trunk, so the waist runs smoothly from under the chest into the hips
         trunk = {n for n in ("torso", "hipbend", "upperBodyL", "upperBodyR", "hip", "sideL", "sideR") if n in bones}
-        m = sbm.remesh(bones, order, W, trunk, y_range=(9.0, 24.6), sigma_px=0.45)
+        m = sbm.remesh(bones, order, W, trunk, y_range=(9.0, 24.6), sigma_px=0.7)
         if m:
-            out.append(dict(name="trunk", bones=trunk, mesh=m, crisp=False))
+            out.append(dict(name="trunk", bones=trunk, mesh=m, crisp=False,
+                            split_z=(16.2 * gl.PXM, 0.5 * gl.PXM, {"hip", "sideL", "sideR"})))
     else:
         # dressed: the crop sweater stays a box; smooth the pants hips only
         pelvis = {n for n in ("hip", "sideL", "sideR") if n in bones}
@@ -86,7 +87,8 @@ def lower_body_lobes(bones, order, W, variant):
         m = sbm.remesh(bones, order, W, names, extra_boxes=[tuple(map(tuple, fill)), tuple(map(tuple, down))],
                        y_range=(6.5, 12.4), sigma_px=0.4)
         if m:
-            out.append(dict(name=f"thigh.{L}", bones=names, mesh=m, skin_match=variant == "nude"))
+            out.append(dict(name=f"thigh.{L}", bones=names, mesh=m, skin_match=variant == "nude",
+                            hip_blend=("hip", 9.6 * gl.PXM, 12.4 * gl.PXM, 0.75)))
         if variant == "nude" and f"knee{L}" in bones:
             # the knee side pieces only stick jagged stocking bits out over the smooth thigh
             out.append(dict(name=f"knee_sides.{L}", bones=subtree(bones, f"knee{L}"), remove_only=True))
@@ -127,11 +129,16 @@ def smooth_lobes(bones, variant, style=None):
         colour = dict(skin_match=bool(style) and variant == "nude",
                       uniform_color=bool(style) and variant == "dressed")
         if style:
-            # one lobe over both cheeks, like the Blockbench model: pressed tight with a soft crease,
-            # no gap down the middle (each cheek still follows its own bone through the weights)
-            out.append(dict(name="butt", bones=bs, center_shift=(0, -1.6 * px, 0.2 * px),
-                            subdiv=7, smooth=50, cone=1.4, weight_smooth=8,
-                            absorb_up=2.5 if variant == "dressed" else 0.0, **colour))
+            # each cheek its own full, round lobe (the mod moves each cheek separately: in doggy they
+            # spread apart and must stay round); pressed so they overlap at rest, the intersection
+            # reads as the crack, no flat squish wall
+            choices = [{n for n in subtree(bones, ch) if keep(n)} for ch in ("cheekL", "cheekR") if ch in bones]
+            for side, s in (("L", 1), ("R", -1)):
+                out.append(dict(name=f"butt.{side}", bones=bs, bone_choices=choices, split_x=s,
+                                center_shift=(0, -1.4 * px, 0.2 * px),
+                                subdiv=7, smooth=70, cone=2.0, full_breast=True, no_squish=True,
+                                press=1.1, body_y=-1.0, roundness=0.75,
+                                **colour))  # the dressed waistband is covered by the smooth pelvis
         else:
             for side, s in (("L", 1), ("R", -1)):
                 out.append(dict(name=f"butt.{side}", bones=bs, split_x=s, center_shift=(0, -1.4 * px, 0.2 * px),

@@ -168,6 +168,11 @@ def radial_lobe(P, center, subdiv=5, cone_deg=2.6, smooth_iters=14, fill_scale=0
             # unseen (inside-body) directions may only shrink toward the sphere
             r_new = r * (1 - blend) + rs * blend
             r_new[~known] = np.minimum(r[~known], rs[~known])
+            if mirror_x and body_y < 0:
+                # butt cheeks: the hidden underside/inner side becomes part of the ball too (away from
+                # the body), so the cheek stays round when an animation swings it out of the body
+                away = np.clip(0.6 - D[:, 1] * body_y + 1.5 * np.maximum(0, -D[:, 2]), 0, 1)
+                r_new[~known] = r_new[~known] * (1 - away[~known]) + rs[~known] * away[~known]
             r = r_new
     r = _laplace(r, E, len(D), smooth_iters, 0.5)
     V = center + D * r[:, None]
@@ -268,7 +273,13 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
     allV, allF, allC, allW = [], [], [], []
     region_mask = np.zeros(len(me.polygons), bool)
     wnames = []
+    cx_all = np.array([p.center.x for p in me.polygons])
     for lb in lobes:
+        if lb.get("bone_choices"):
+            # pick the bone set that actually sits on this lobe's side
+            best = max(lb["bone_choices"], key=lambda bs: (cx_all[np.isin(face_bone, list(bs))].mean()
+                                                           * lb["split_x"]) if np.isin(face_bone, list(bs)).any() else -1e9)
+            lb = dict(lb, bones=best)
         mask = np.isin(face_bone, list(lb["bones"]))
         if lb.get("remove_only"):
             region_mask |= mask
@@ -324,6 +335,28 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
                 Wl[:, j] = bone_v == gi
             Wl = _laplace(Wl, E, len(V), lb.get("weight_smooth", 10), 0.5)
             Wl /= np.maximum(Wl.sum(axis=1, keepdims=True), 1e-9)
+            if lb.get("split_z"):
+                # sharp waist: below it only the pelvis bones, above it only the torso bones, so a
+                # bending torso can't drag the hips (and the skin under the butt) with it
+                zc, band, lower = lb["split_z"]
+                low = np.array([n in lower for n in names])
+                t = np.clip((V[:, 2] - (zc - band)) / (2 * band), 0, 1)
+                t = t * t * (3 - 2 * t)
+                outw = np.zeros_like(Wl)
+                for msk, wt in ((low, 1 - t), (~low, t)):
+                    part = Wl * msk
+                    tot = part.sum(axis=1, keepdims=True)
+                    fb = np.tile(msk / max(msk.sum(), 1), (len(V), 1))
+                    part = np.where(tot > 1e-6, part / np.maximum(tot, 1e-9), fb)
+                    outw += part * wt[:, None]
+                Wl = outw
+            if lb.get("hip_blend") and lb["hip_blend"][0] in gnames.values():
+                # top of the thigh bends with the pelvis like skin, instead of the whole block
+                # swinging out through the butt when the leg lifts
+                hb, z0, z1, wmax = lb["hip_blend"]
+                wh = wmax * np.clip((V[:, 2] - z0) / (z1 - z0), 0, 1)
+                Wl = np.concatenate([Wl * (1 - wh)[:, None], wh[:, None]], axis=1)
+                names = names + [hb]
             allV.append(V)
             allF.append(F + sum(len(v) for v in allV[:-1]))
             allC.append(col_v)
@@ -405,6 +438,42 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             Wl[:, j] = bone_v == gi
         Wl = _laplace(Wl, E, len(V), lb.get("weight_smooth", 6), 0.5)
         Wl /= np.maximum(Wl.sum(axis=1, keepdims=True), 1e-9)
+        if lb.get("side_split"):
+            # each half follows only its own side's bones (the mod moves each cheek rigidly), with a
+            # narrow blend across the middle -> halves stay round instead of dragging lumps
+            side = np.array([np.sign(P[B == next(k for k, v in gnames.items() if v == n), 0].mean())
+                             for n in names])
+            bw = lb["side_split"] * PXM
+            sL = np.clip((V[:, 0] + bw) / (2 * bw), 0, 1)
+            sL = sL * sL * (3 - 2 * sL)
+            out_w = np.zeros_like(Wl)
+            for sg, wt in ((1.0, sL), (-1.0, 1 - sL)):
+                part = Wl * (side == sg)
+                tot = part.sum(axis=1, keepdims=True)
+                fallback = np.tile((side == sg) / max((side == sg).sum(), 1), (len(V), 1))
+                part = np.where(tot > 1e-6, part / np.maximum(tot, 1e-9), fallback)
+                out_w += part * wt[:, None]
+            Wl = out_w
+        if lb.get("round_halves"):
+            # pull each half toward its own best-fit sphere on the outer (back/side/bottom) surface,
+            # fading out toward the middle and the body side, then cut a soft crease down the middle
+            k = lb["round_halves"]
+            for sg in (1.0, -1.0):
+                half = (V[:, 0] * sg > 0.3 * PXM) & (V[:, 1] > center[1])
+                if half.sum() < 50:
+                    continue
+                c_s, r_s = _fit_sphere(V[half])
+                d = V - c_s
+                tgt = c_s + d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-9) * r_s
+                w = k * np.clip(V[:, 0] * sg / (1.0 * PXM), 0, 1) * np.clip((V[:, 1] - center[1]) / PXM + 0.5, 0, 1)
+                V = V + (tgt - V) * w[:, None]
+            depth, width = lb.get("crease", (0.0, 1.0))
+            if depth:
+                t = np.clip(1 - np.abs(V[:, 0]) / (width * PXM), 0, 1) ** 2
+                t *= np.clip((V[:, 1] - center[1]) / PXM, 0, 1)
+                V = V.copy()
+                V[:, 1] -= depth * PXM * t
+            V = _laplace(V, E, len(V), 6, 0.5)
         if lb.get("soft_nipple") and any("nipple" in gnames.get(b, "").lower() for b in np.unique(B)):
             # SlipperyT Jenny: no areola disc. The skin around the nipple takes the plain skin colour,
             # the mod's raised areola plate is relaxed away *radially* (a position Laplacian flattens
@@ -460,8 +529,9 @@ def build_smooth(title, col, body, rig, lobes, tex, material):
             xo, xi = xs.max(), xs.min()
             k = (xo - xi + lb.get("press", 0.0) * PXM) / max(xo - xi, 1e-9)
             V[:, 0] = sx * (xo - (xo - xs) * k)
-            V = squish_against_plane(V, E, lb["split_x"], gap=0.03 * PXM, bulge=lb.get("bulge", 0.35),
-                                     out_y=-lb.get("body_y", 1.0))
+            if not lb.get("no_squish"):
+                V = squish_against_plane(V, E, lb["split_x"], gap=0.03 * PXM, bulge=lb.get("bulge", 0.35),
+                                         out_y=-lb.get("body_y", 1.0))
         if lb.get("skin_match") and SKIN_REF[0] is not None:
             # same plain skin colour as the breasts (the mod texture paints these darker and orange)
             col_v[:] = SKIN_REF[0]
